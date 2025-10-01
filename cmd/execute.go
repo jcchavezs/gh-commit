@@ -79,14 +79,18 @@ func (rn *RunSettings) Commit() error {
 	var err error
 	var commitSha string
 
-	// Create branches so we don't have to worry about those errors later
-	if rn.PrSettings != nil {
-		commitSha, err = EnsureBranchesExist(rn.PrSettings.BaseRef, rn.PrSettings.HeadRef, rn.RepoSettings)
+	if rn.CommitSettings.BaseCommit == "" {
+		// Create branches so we don't have to worry about those errors later
+		if rn.PrSettings != nil {
+			commitSha, err = EnsureBranchesExist(rn.PrSettings.BaseRef, rn.PrSettings.HeadRef, rn.RepoSettings)
+		} else {
+			commitSha, err = EnsureBranchesExist(rn.CommitSettings.CommitToBranch, "", rn.RepoSettings)
+		}
+		if err != nil {
+			return err
+		}
 	} else {
-		commitSha, err = EnsureBranchesExist(rn.CommitSettings.CommitToBranch, "", rn.RepoSettings)
-	}
-	if err != nil {
-		return err
+		commitSha = rn.CommitSettings.BaseCommit
 	}
 
 	// Commits reference trees. Trees have their own hashes. Get the hash
@@ -102,15 +106,15 @@ func (rn *RunSettings) Commit() error {
 	}
 
 	newTreeSha, err := CreateTree(currentTreeSha, blobs)
-	newCommit, err := CreateCommitFromTree(commitSha, newTreeSha, rn.CommitSettings.CommitMessage)
 
+	newCommit, err := CreateCommitFromTree(commitSha, newTreeSha, rn.CommitSettings.CommitMessage)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating commit from tree: %w", err)
 	}
 
-	err = AssociateCommitWithBranch(rn.CommitSettings.CommitToBranch, newCommit)
+	err = AssociateCommitWithBranch(rn.CommitSettings.CommitToBranch, newCommit, rn.CommitSettings.AllowFastForward)
 	if err != nil {
-		return err
+		return fmt.Errorf("associating commit with branch: %w", err)
 	}
 
 	if rn.PrSettings != nil {
